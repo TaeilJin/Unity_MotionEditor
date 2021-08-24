@@ -14,6 +14,21 @@ public class MotionEditor : MonoBehaviour {
 	public string Folder = string.Empty;
 	public Actor Character = null;
     public MotionData[] Files = new MotionData[0];
+	public GameObject chairroot =null;
+
+	public GameObject seat = null;
+	
+	public GameObject backrest = null;
+	
+	public GameObject rhandrest = null;
+	public GameObject lhandrest = null;
+	
+	public GameObject rarmrest = null;
+	public GameObject larmrest = null;
+
+	public GameObject rfootrest = null;
+	public GameObject lfootrest = null;
+
 	public bool Save = true;
 
 	public float TargetFramerate = 60f;
@@ -191,7 +206,81 @@ public class MotionEditor : MonoBehaviour {
 		}
 		return Actor;
 	}
+	public GameObject GetChairRoot(GameObject chairroot)
+    {
+		if (chairroot != null)
+		{
+			return chairroot;
+		}
+		if (chairroot == null)
+		{
+			//chairroot = new GameObject("chair_root");
+			chairroot = GameObject.CreatePrimitive(PrimitiveType.Plane);
+			chairroot.name = "chairroot";
 
+			chairroot.transform.localScale = new Vector3(0.1f, 0.1f, 0.1f);
+			var planeRenderer = chairroot.GetComponent<Renderer>();
+			var tempMaterial = new Material(planeRenderer.sharedMaterial);
+			tempMaterial.color = Color.red;
+			planeRenderer.sharedMaterial = tempMaterial;
+
+			chairroot.transform.SetPositionAndRotation(Data.chairroot.GetPosition(),Data.chairroot.GetRotation());
+		}
+		return chairroot;
+	}
+	public Matrix4x4 genInteractionFrame(Vector3 patch_position, Vector3 patch_normal, Vector3 ref_axis)
+	{
+		Matrix4x4 patch_mat = new Matrix4x4();
+		Vector3 x_vec = Vector3.Cross(patch_normal, ref_axis); x_vec.Normalize();
+		patch_mat.SetColumn(0, new Vector4(x_vec.x, x_vec.y, x_vec.z, 0.0f)); 
+		patch_mat.SetColumn(1, new Vector4(patch_normal.x, patch_normal.y, patch_normal.z, 0.0f));
+		patch_mat.SetColumn(2, new Vector4(ref_axis.x, ref_axis.y, ref_axis.z, 0.0f));
+		patch_mat.SetColumn(3, new Vector4(patch_position.x, patch_position.y, patch_position.z, 0.1f));
+
+		return patch_mat;
+	}
+	//void EX3_motionpatch::genInteractionFrame(gVec3 plane_position, gVec3 plane_normal, gXMat chairroot, gXMat& interaction_frame)
+	//{
+	//	gVec3 x_vec = plane_normal % chairroot.rotZ(); x_vec.normalize();
+	//	gRotMat rotmat_; rotmat_.setColumn(0, x_vec); rotmat_.setColumn(1, plane_normal); rotmat_.setColumn(2, chairroot.rotZ());
+	//	interaction_frame.setRot(rotmat_); interaction_frame.setTrn(plane_position);
+	//}
+
+	public GameObject GetSeat(GameObject seat, Vector3 inv_pos, Vector3 inv_normal, string name)
+	{
+		if (seat != null)
+		{
+			return seat;
+		}
+		if (seat == null)
+		{
+			
+			if (inv_pos.z > 1.0 )
+			{
+				seat = null;
+			}
+			else
+			{
+				//seat = new GameObject("seat");
+				seat = GameObject.CreatePrimitive(PrimitiveType.Plane);
+				seat.name = name;
+
+				seat.transform.localScale = new Vector3(0.01f, 0.01f, 0.01f);
+				
+				Vector3 seat_center = Data.chairroot.MultiplyPoint(inv_pos);
+				Vector3 seat_normal = Data.chairroot.MultiplyVector(inv_normal);
+				Matrix4x4 seat_mat = genInteractionFrame(seat_center, seat_normal, Data.chairroot.GetForward());
+
+				var planeRenderer = seat.GetComponent<Renderer>();
+				var tempMaterial = new Material(planeRenderer.sharedMaterial);
+				tempMaterial.color = Color.blue;
+				planeRenderer.sharedMaterial = tempMaterial;
+
+				seat.transform.SetPositionAndRotation(seat_mat.GetPosition(), seat_mat.GetRotation());
+			}
+		}
+		return seat;
+	}
 	public float RoundToTargetTime(float time) {
 		return Mathf.RoundToInt(time * TargetFramerate) / TargetFramerate;	
 	}
@@ -264,6 +353,12 @@ public class MotionEditor : MonoBehaviour {
 		LoadData(Files[Mathf.Min(System.Array.FindIndex(Files, x => x==Data)+1, Files.Length-1)]);
 	}
 
+	public void LoadEnv()
+    {
+		GameObject root_interaction_object = new GameObject("root_interaction");
+		root_interaction_object.transform.SetPositionAndRotation(Data.chairroot.GetPosition(), Data.chairroot.GetRotation());
+		chairroot = root_interaction_object;
+    }
 	public void LoadFrame(float timestamp) {
 		Timestamp = timestamp;
 		Actor actor = GetActor();
@@ -273,8 +368,8 @@ public class MotionEditor : MonoBehaviour {
 		Matrix4x4 root = module == null ? frame.GetBoneTransformation(0, Mirror) : module.GetRootTransformation(frame, Mirror);
 		actor.transform.position = root.GetPosition();
 		actor.transform.rotation = root.GetRotation();
-
-        UpdateBoneMapping();
+		
+		UpdateBoneMapping();
 		for(int i=0; i<actor.Bones.Length; i++) {
 			if(BoneMapping[i] == -1) {
 				Debug.Log("Bone " + actor.Bones[i].GetName() + " could not be mapped.");
@@ -291,8 +386,22 @@ public class MotionEditor : MonoBehaviour {
 			}
 		}
 		foreach(GameObject instance in scene.GetRootGameObjects()) {
-			instance.transform.localScale = Vector3.one.GetMirror(Mirror ? Data.MirrorAxis : Axis.None);
-			foreach(SceneEvent e in instance.GetComponentsInChildren<SceneEvent>(true)) {
+			if(instance.name != "chairroot" &&
+				instance.name != "seat" &&
+				instance.name != "armrest_L" &&
+				instance.name != "armrest_R" &&
+				instance.name != "handrest_L" &&
+				instance.name != "handrest_R" &&
+				instance.name != "footrest_L" &&
+				instance.name != "footrest_R")
+				instance.transform.localScale = Vector3.one.GetMirror(Mirror ? Data.MirrorAxis : Axis.None);
+
+			if (instance.name == "chairroot")
+			{
+				Matrix4x4 hi = Data.chairroot.GetMirror(Mirror ? Data.MirrorAxis : Axis.None);
+				instance.transform.SetPositionAndRotation(hi.GetPosition(), hi.GetRotation());
+			}
+			foreach (SceneEvent e in instance.GetComponentsInChildren<SceneEvent>(true)) {
 				if(Callbacks) {
 					e.Callback(this);
 				} else {
@@ -498,7 +607,7 @@ public class MotionEditor : MonoBehaviour {
 
 					if(Target.Data != null) {
 						Frame frame = Target.GetCurrentFrame();
-
+						
 						Utility.SetGUIColor(UltiDraw.Grey);
 						using(new EditorGUILayout.VerticalScope ("Box")) {
 							Utility.ResetGUIColor();
@@ -527,7 +636,62 @@ public class MotionEditor : MonoBehaviour {
 							GUILayout.FlexibleSpace();
 							EditorGUILayout.EndHorizontal();
 
-							Utility.SetGUIColor(UltiDraw.Mustard);
+                            if (Target.Data.GetScene().GetRootGameObjects().Length == 0)
+                            {
+
+                                Target.chairroot = Target.GetChairRoot(Target.chairroot);
+                                if (Target.chairroot != null)
+                                    SceneManager.MoveGameObjectToScene(Target.chairroot, Target.Data.GetScene());
+
+                                //
+                                Target.seat = Target.GetSeat(Target.seat, Target.Data.seat_center, Target.Data.seat_normal, "seat");
+                                if (Target.seat != null)
+                                    Target.seat.transform.parent = Target.chairroot.transform;
+                                //	SceneManager.MoveGameObjectToScene(Target.seat, Target.Data.GetScene());
+
+                                //
+                                Target.backrest = Target.GetSeat(Target.backrest, Target.Data.backrest_center, Target.Data.backrest_normal, "backrest");
+
+                                if (Target.backrest != null)
+                                    Target.backrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.backrest, Target.Data.GetScene());
+
+                                //
+                                Target.larmrest = Target.GetSeat(Target.larmrest, Target.Data.armrest_L_center, Target.Data.armrest_L_normal, "armrest_L");
+                                if (Target.larmrest != null)
+                                    Target.larmrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.larmrest, Target.Data.GetScene());
+                                //
+                                Target.rarmrest = Target.GetSeat(Target.rarmrest, Target.Data.armrest_R_center, Target.Data.armrest_R_normal, "armrest_R");
+                                if (Target.rarmrest != null)
+                                    Target.rarmrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.rarmrest, Target.Data.GetScene());
+
+                                //
+                                Target.lhandrest = Target.GetSeat(Target.lhandrest, Target.Data.handrest_L_center, Target.Data.handrest_L_normal, "handrest_L");
+                                if (Target.lhandrest != null)
+                                    Target.lhandrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.lhandrest, Target.Data.GetScene());
+                                //
+                                Target.rhandrest = Target.GetSeat(Target.rhandrest, Target.Data.handrest_R_center, Target.Data.handrest_R_normal, "handrest_R");
+                                if (Target.rhandrest != null)
+                                    Target.rhandrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.rhandrest, Target.Data.GetScene());
+
+                                //
+                                Target.lfootrest = Target.GetSeat(Target.lfootrest, Target.Data.footrest_L_center, Target.Data.footrest_L_normal, "footrest_L");
+                                if (Target.lfootrest != null)
+                                    Target.lfootrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.lfootrest, Target.Data.GetScene());
+                                //
+                                Target.rfootrest = Target.GetSeat(Target.rfootrest, Target.Data.footrest_R_center, Target.Data.footrest_R_normal, "footrest_R");
+                                if (Target.rfootrest != null)
+                                    Target.rfootrest.transform.parent = Target.chairroot.transform;
+                                //SceneManager.MoveGameObjectToScene(Target.rfootrest, Target.Data.GetScene());
+                            }
+
+
+                            Utility.SetGUIColor(UltiDraw.Mustard);
 							using(new EditorGUILayout.VerticalScope ("Box")) {
 								Utility.ResetGUIColor();
 
@@ -739,30 +903,42 @@ public class MotionEditor : MonoBehaviour {
 								}
                                 if (Utility.GUIButton("Create RootInteraction", UltiDraw.DarkGrey, UltiDraw.White))
                                 {
-                                    //vector_x 
-                                    Vector3 vec_shoulder = Target.GetActor().FindBone("mixamorig:LeftShoulder").Transform.position - Target.GetActor().FindBone("mixamorig:RightShoulder").Transform.position;
-                                    vec_shoulder = vec_shoulder.normalized;
-                                    Vector3 vec_upleg = Target.GetActor().FindBone("mixamorig:LeftUpLeg").Transform.position - Target.GetActor().FindBone("mixamorig:RightUpLeg").Transform.position;
-                                    vec_upleg = vec_upleg.normalized;
-                                    Vector3 vec_across = vec_shoulder + vec_upleg;
-                                    vec_across = vec_across.normalized;
-                                    //vector_forward
-                                    Vector3 vec_forward = Vector3.Cross(vec_across, Vector3.up);
-                                    //vector_x_new
-                                    Vector3 vec_right = Vector3.Cross(vec_forward, Vector3.up);
-                                    //root matrix 
-                                    Matrix4x4 root_interaction = Matrix4x4.identity;
-                                    Vector4 vec_x = new Vector4(vec_right.x, vec_right.y, vec_right.z);
-                                    Vector4 vec_z = new Vector4(vec_forward.x, vec_forward.y, vec_forward.z);
-                                    Vector4 vec_y = new Vector4(0.0f, 1.0f, 0.0f);
-                                    Vector3 pos__ = Target.GetActor().GetRoot().position;
-                                    Vector4 pos_h = new Vector4(pos__.x, 0.0f, pos__.z);
-                                    root_interaction.SetColumn(0, vec_x); root_interaction.SetColumn(1, vec_y); root_interaction.SetColumn(2, vec_z);
-                                    root_interaction.SetColumn(3, pos_h);
-                                    //
-                                    Target.Data.CreateRootInteraction(root_interaction);
+									
+									//                           //vector_x 
+									//                           Vector3 vec_shoulder = Target.GetActor().FindBone("LeftShoulder").Transform.position - Target.GetActor().FindBone("RightShoulder").Transform.position;
+									//                           vec_shoulder = vec_shoulder.normalized;
+									//                           Vector3 vec_upleg = Target.GetActor().FindBone("LeftUpLeg").Transform.position - Target.GetActor().FindBone("RightUpLeg").Transform.position;
+									//                           vec_upleg = vec_upleg.normalized;
+									//                           Vector3 vec_across = vec_shoulder + vec_upleg;
+									//                           vec_across = vec_across.normalized;
+									//                           //vector_forward
+									//                           Vector3 vec_forward = Vector3.Cross(-1.0f*vec_across, Vector3.up);
+									//                           //vector_x_new
+									//                           Vector3 vec_right = Vector3.Cross(-1.0f * vec_forward, Vector3.up);
+									////root matrix 
+									//Matrix4x4 root_interaction = Matrix4x4.identity;
+									//                           Vector4 vec_x = new Vector4(vec_right.x, vec_right.y, vec_right.z);
+									//                           Vector4 vec_z = new Vector4(vec_forward.x, vec_forward.y, vec_forward.z);
+									//                           Vector4 vec_y = new Vector4(0.0f, 1.0f, 0.0f);
+									//                           Vector3 pos__ = Target.GetActor().GetRoot().position;
+									//                           Vector4 pos_h = new Vector4(pos__.x, 0.0f, pos__.z);
+									//                           root_interaction.SetColumn(0, vec_x); root_interaction.SetColumn(1, vec_y); root_interaction.SetColumn(2, vec_z);
+									//                           root_interaction.SetColumn(3, pos_h);
+									////
+									//Debug.Log(Target.Data.GetScene().name);
+									////Target.Data.GetScene().
+									//GameObject root_interaction_object = new GameObject("root_interaction");
+									//root_interaction_object.transform.SetPositionAndRotation(root_interaction.GetPosition(), root_interaction.GetRotation());
+									//SceneManager.MoveGameObjectToScene(Target.GetChairRoot(), Target.Data.GetScene());
+									
+								}
+								if (Utility.GUIButton("Create Mesh", UltiDraw.DarkGrey, UltiDraw.White))
+                                {
+									// pop 해서 mesh 데이터를 불러온다. 
+									// bvh 클립마다 mesh 데이터가 
                                 }
-                            }
+								
+							}
 						}
 					}
 				}

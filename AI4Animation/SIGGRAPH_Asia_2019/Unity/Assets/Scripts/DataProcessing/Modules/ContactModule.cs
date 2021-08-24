@@ -317,7 +317,7 @@ public class ContactModule : Module {
 		}
 
 		if(ShowContacts) {
-			for(int i=0; i<Sensors.Length; i++) {
+			for (int i=0; i<Sensors.Length; i++) {
 				if(Sensors[i].Edit != Sensor.ID.None) {
 					for(float j=0f; j<=Data.GetTotalTime(); j+=Mathf.Max(Step, 1)/Data.Framerate) {
 						Frame reference = Data.GetFrame(j);

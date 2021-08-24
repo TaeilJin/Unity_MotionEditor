@@ -10,7 +10,7 @@ public abstract class NeuralAnimation : MonoBehaviour {
 
 	public NeuralNetwork NeuralNetwork = null;
 	public Actor Actor;
-
+	
 	public float AnimationTime {get; private set;}
 	public float PostprocessingTime {get; private set;}
 	public FPS Framerate = FPS.Sixty;

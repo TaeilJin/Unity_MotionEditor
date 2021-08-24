@@ -245,6 +245,7 @@ public class MotionExporter : EditorWindow {
 							Load();
 						}
 						if(Utility.GUIButton("Export Data", UltiDraw.DarkGrey, UltiDraw.White)) {
+							//this.StartCoroutine(ExportDataENVINTERACTION());
 							this.StartCoroutine(ExportDataENVINTERACTION());
 						}
 					} else {
@@ -750,7 +751,202 @@ public class MotionExporter : EditorWindow {
 			Debug.Log("Exported " + total + " samples.");
 		}
 	}
-    private IEnumerator ExportDataENVINTERACTION()
+
+	private IEnumerator ExportDataENVINTERACTION_ROT()
+	{
+		if (Editor == null)
+		{
+			Debug.Log("No editor found.");
+		}
+		else if (!System.IO.Directory.Exists(Application.dataPath + "/../../Export"))
+		{
+			Debug.Log("No export folder found at " + GetExportPath() + ".");
+		}
+		else
+		{
+			Exporting = true;
+
+			Progress = 0f;
+
+			int total = 0;
+			int items = 0;
+			int sequence = 0;
+			DateTime timestamp = Utility.GetTimestamp();
+
+			//Data X = new Data(CreateFile("Input"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+			//Data Y = new Data(CreateFile("Output"), CreateFile("OutputNorm"), CreateFile("OutputLabels"));
+			GameObject emptyGameObject = new GameObject("chairrootframe_1");
+
+			StreamWriter S = CreateFile("Sequences");
+			bool editorSave = Editor.Save;
+			bool editorMirror = Editor.Mirror;
+			float editorRate = Editor.TargetFramerate;
+			int editorSeed = Editor.RandomSeed;
+			Editor.Save = false;
+			Editor.SetTargetFramerate(Framerate);
+			for (int i = 0; i < Files.Count; i++)
+			{
+				if (!Exporting)
+				{
+					break;
+				}
+				if (Export[i])
+				{
+					Index = i;
+					Editor.LoadData(Files[i]);
+					while (!Editor.GetData().GetScene().isLoaded)
+					{
+						Debug.Log("Waiting for scene to be loaded.");
+						yield return new WaitForSeconds(0f);
+					}
+					Data X = new Data(CreateFile("Input_pos"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+					Data X_mirror = new Data(CreateFile("mirror_Input_pos"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+					for (int m = 1; m <= 2; m++)
+					{
+						if (!Exporting)
+						{
+							break;
+						}
+						if (m == 1)
+						{
+							Editor.SetMirror(false);
+						}
+						if (m == 2)
+						{
+							Editor.SetMirror(true);
+						}
+						if (!Editor.Mirror || WriteMirror && Editor.Mirror && Editor.GetData().Symmetric)
+						{
+							Debug.Log("File: " + Editor.GetData().GetName() + " Scene: " + Editor.GetData().GetName() + " " + (Editor.Mirror ? "[Mirror]" : "[Default]"));
+
+							//foreach(Sequence seq in Editor.GetData().Sequences) { Sequence seq = Editor.GetData().GetUnrolledSequence();
+							foreach (Sequence seq in Editor.GetData().Sequences)
+							{
+								sequence += 1;
+
+
+								//Exporting
+								float start = Editor.CeilToTargetTime(Editor.GetData().GetFrame(seq.Start).Timestamp);
+								float end = Editor.FloorToTargetTime(Editor.GetData().GetFrame(seq.End).Timestamp);
+								int sample = 0;
+
+								while (start + (sample + 1) / Framerate - end < 1e-3)
+								{
+									//Debug.Log(" see frame " + start + (sample + 1) / Framerate);
+									if (!Exporting)
+									{
+										break;
+									}
+									Editor.SetRandomSeed(sample + 1);
+									InputEnvInteraction current = new InputEnvInteraction(Editor, start + sample / Framerate);
+									//chair root update
+									emptyGameObject.transform.SetPositionAndRotation(current.Root_Interaction_mat.GetPosition(), current.Root_Interaction_mat.GetRotation());
+									sample += 1;
+
+									//Write Sequence
+									S.WriteLine(sequence.ToString());
+
+									Vector3 hip_pos = current.Posture[0].GetPosition();
+									float height = hip_pos.y;
+									Vector3 hip_pos_gr = hip_pos; hip_pos_gr.y = 0;
+
+									float radius = (hip_pos_gr - emptyGameObject.transform.GetWorldMatrix().GetPosition()).magnitude;
+
+
+
+									if (m == 1)
+									{
+										//Auto-Regressive Posture
+										for (int k = 0; k < current.Posture.Length; k++)
+										{
+											X.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X.Feed(current.Posture[k].GetForward().GetRelativeDirectionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Forward");
+											X.Feed(current.Posture[k].GetUp().GetRelativeDirectionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Up");
+											
+										}
+										if (height < 0.6 && radius < 0.3)
+										{
+											X.Feed(0, "Sit");
+										}
+										else
+										{
+											X.Feed(1, "Stand");
+										}
+										//Write Line
+										X.Store();
+									}
+									else
+									{
+										//Auto-Regressive Posture
+										for (int k = 0; k < current.Posture.Length; k++)
+										{
+											X_mirror.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X_mirror.Feed(current.Posture[k].GetForward().GetRelativeDirectionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Forward");
+											X_mirror.Feed(current.Posture[k].GetUp().GetRelativeDirectionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Up");
+											//X_mirror.Feed(current.Velocities[k].GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Velocity");
+										}
+										if (height < 0.6 && radius < 0.3)
+										{
+											//X_mirror.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X_mirror.Feed(0, "Sit");
+										}
+										else
+										{
+											X_mirror.Feed(1, "Stand");
+										}
+										//Write Line
+										X_mirror.Store();
+									}
+
+
+
+
+
+
+									Progress = (sample / Framerate) / (end - start);
+									total += 1;
+									items += 1;
+									if (items >= BatchSize)
+									{
+										Performance = items / (float)Utility.GetElapsedTime(timestamp);
+										timestamp = Utility.GetTimestamp();
+										items = 0;
+										yield return new WaitForSeconds(0f);
+									}
+								}
+
+								//Reset Progress
+								Progress = 0f;
+
+								//Collect Garbage
+								EditorUtility.UnloadUnusedAssetsImmediate();
+								Resources.UnloadUnusedAssets();
+								GC.Collect();
+							}
+						}
+					}
+					X.Finish();
+					X_mirror.Finish();
+				}
+			}
+			Editor.Save = editorSave;
+			Editor.SetMirror(editorMirror);
+			Editor.SetTargetFramerate(editorRate);
+			Editor.SetRandomSeed(editorSeed);
+
+			S.Close();
+
+
+
+			Index = -1;
+			Exporting = false;
+			yield return new WaitForSeconds(0f);
+
+			Debug.Log("Exported " + total + " samples.");
+		}
+	}
+
+	private IEnumerator ExportDataENVINTERACTION()
     {
         if (Editor == null)
         {
@@ -773,7 +969,7 @@ public class MotionExporter : EditorWindow {
 
             //Data X = new Data(CreateFile("Input"), CreateFile("InputNorm"), CreateFile("InputLabels"));
             //Data Y = new Data(CreateFile("Output"), CreateFile("OutputNorm"), CreateFile("OutputLabels"));
-            GameObject emptyGameObject = new GameObject("chairrootframe");
+            GameObject emptyGameObject = new GameObject("chairrootframe_1");
 
             StreamWriter S = CreateFile("Sequences");
             bool editorSave = Editor.Save;
@@ -797,8 +993,9 @@ public class MotionExporter : EditorWindow {
                         Debug.Log("Waiting for scene to be loaded.");
                         yield return new WaitForSeconds(0f);
                     }
-                    Data X = new Data(CreateFile("Input"), CreateFile("InputNorm"), CreateFile("InputLabels"));
-                    for (int m = 1; m <= 2; m++)
+					Data X = new Data(CreateFile("Input_pos"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+					Data X_mirror = new Data(CreateFile("mirror_Input_pos"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+					for (int m = 1; m <= 2; m++)
                     {
                         if (!Exporting)
                         {
@@ -816,8 +1013,8 @@ public class MotionExporter : EditorWindow {
                         {
                             Debug.Log("File: " + Editor.GetData().GetName() + " Scene: " + Editor.GetData().GetName() + " " + (Editor.Mirror ? "[Mirror]" : "[Default]"));
 
-                            //foreach(Sequence seq in Editor.GetData().Sequences) {
-                            Sequence seq = Editor.GetData().GetUnrolledSequence();
+							//foreach(Sequence seq in Editor.GetData().Sequences) { Sequence seq = Editor.GetData().GetUnrolledSequence();
+							foreach (Sequence seq in Editor.GetData().Sequences) 
                             {
                                 sequence += 1;
 
@@ -826,7 +1023,8 @@ public class MotionExporter : EditorWindow {
                                 float start = Editor.CeilToTargetTime(Editor.GetData().GetFrame(seq.Start).Timestamp);
                                 float end = Editor.FloorToTargetTime(Editor.GetData().GetFrame(seq.End).Timestamp);
                                 int sample = 0;
-                                while (start + (sample + 1) / Framerate <= end)
+								
+								while (start + (sample + 1) / Framerate - end < 1e-3)
                                 {
                                     //Debug.Log(" see frame " + start + (sample + 1) / Framerate);
                                     if (!Exporting)
@@ -835,27 +1033,90 @@ public class MotionExporter : EditorWindow {
                                     }
                                     Editor.SetRandomSeed(sample + 1);
                                     InputEnvInteraction current = new InputEnvInteraction(Editor, start + sample / Framerate);
+									//chair root update
                                     emptyGameObject.transform.SetPositionAndRotation(current.Root_Interaction_mat.GetPosition(), current.Root_Interaction_mat.GetRotation());
                                     sample += 1;
                                    
                                     //Write Sequence
                                     S.WriteLine(sequence.ToString());
 
-                                    //Input
-                                    //Auto-Regressive Posture
-                                    for (int k = 0; k < current.Posture.Length; k++)
+									Vector3 hip_pos = current.Posture[0].GetPosition();
+									float height = hip_pos.y;
+									Vector3 hip_pos_gr = hip_pos; hip_pos_gr.y = 0;
+
+									float radius = (hip_pos_gr - emptyGameObject.transform.GetWorldMatrix().GetPosition()).magnitude;
+									Vector3 left_toe_pos = current.Posture[17].GetPosition();
+									Vector3 right_toe_pos = current.Posture[21].GetPosition();
+									Vector3 mean_toe_pos = (left_toe_pos + right_toe_pos) / 2;
+
+
+									
+									if (m == 1)
+									{
+										X.Feed(current.seat_center, "seat_center");
+										X.Feed(current.backrest_center, "backrest_center");
+										X.Feed(current.armrest_L_center, "armrest_L_center");
+										X.Feed(current.armrest_R_center, "armrest_R_center");
+										X.Feed(current.handrest_L_center, "handrest_L_center");
+										X.Feed(current.handrest_R_center, "handrest_R_center");
+										X.Feed(current.footrest_L_center, "footrest_L_center");
+										X.Feed(current.footrest_R_center, "footrest_R_center");
+										//Auto-Regressive Posture
+										for (int k = 0; k < current.Posture.Length; k++)
+										{
+											X.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X.Feed(current.Posture[k].GetUp().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Normal");
+											//X.Feed(current.Posture[k].GetForward().GetRelativeDirectionTo(current.Posture[0]), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Forward");
+											//X.Feed(current.Posture[k].GetUp().GetRelativeDirectionTo(current.Posture[0]), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Up");
+											//X.Feed(current.Velocities[k].GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Velocity");
+										}
+										if (height < 0.7 && radius < 0.3 || mean_toe_pos.y > 0.3)
+										{
+											//X.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X.Feed(0, "Sit");
+										}
+										else
+										{
+											X.Feed(1, "Stand");
+										}
+										//Write Line
+										X.Store();
+									}
+									else
                                     {
-                                        
-                                        X.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(current.Root_Interaction_mat), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
-                                        //X.Feed(current.Posture[k].GetForward().GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Forward");
-                                        //X.Feed(current.Posture[k].GetUp().GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Up");
-                                        //X.Feed(current.Velocities[k].GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Velocity");
-                                    }
+										X_mirror.Feed(current.seat_center, "seat_center");
+										X_mirror.Feed(current.backrest_center, "backrest_center");
+										X_mirror.Feed(current.armrest_L_center, "armrest_L_center");
+										X_mirror.Feed(current.armrest_R_center, "armrest_R_center");
+										X_mirror.Feed(current.handrest_L_center, "handrest_L_center");
+										X_mirror.Feed(current.handrest_R_center, "handrest_R_center");
+										X_mirror.Feed(current.footrest_L_center, "footrest_L_center");
+										X_mirror.Feed(current.footrest_R_center, "footrest_R_center");
+										//Auto-Regressive Posture
+										for (int k = 0; k < current.Posture.Length; k++)
+										{
+											X_mirror.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X_mirror.Feed(current.Posture[k].GetUp().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Normal");
+											//X_mirror.Feed(current.Posture[k].GetForward().GetRelativeDirectionTo(current.Posture[0]), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Forward");
+											//X_mirror.Feed(current.Posture[k].GetUp().GetRelativeDirectionTo(current.Posture[0]), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Up");
+											//X_mirror.Feed(current.Velocities[k].GetRelativeDirectionTo(current.Root), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Velocity");
+										}
+										if (height < 0.7 && radius < 0.3 || mean_toe_pos.y > 0.3)
+										{
+											//X_mirror.Feed(current.Posture[k].GetPosition().GetRelativePositionTo(emptyGameObject.transform.GetWorldMatrix()), "Bone" + (k + 1) + Editor.GetActor().Bones[k].GetName() + "Position");
+											X_mirror.Feed(0, "Sit");
+										}
+										else
+										{
+											X_mirror.Feed(1, "Stand");
+										}
+										//Write Line
+										X_mirror.Store();
+									}
                                                                       
 
                                    
-                                    //Write Line
-                                    X.Store();
+                                    
                                    
 
                                     Progress = (sample / Framerate) / (end - start);
@@ -869,9 +1130,9 @@ public class MotionExporter : EditorWindow {
                                         yield return new WaitForSeconds(0f);
                                     }
                                 }
-
-                                //Reset Progress
-                                Progress = 0f;
+								
+								//Reset Progress
+								Progress = 0f;
 
                                 //Collect Garbage
                                 EditorUtility.UnloadUnusedAssetsImmediate();
@@ -880,8 +1141,9 @@ public class MotionExporter : EditorWindow {
                             }
                         }
                     }
-                    X.Finish();
-                }
+					X.Finish();
+					X_mirror.Finish();
+				}
             }
             Editor.Save = editorSave;
             Editor.SetMirror(editorMirror);
@@ -919,8 +1181,9 @@ public class MotionExporter : EditorWindow {
             int items = 0;
             int sequence = 0;
             DateTime timestamp = Utility.GetTimestamp();
+			GameObject emptyGameObject = new GameObject("chairrootframe");
 
-            Data X = new Data(CreateFile("Input"), CreateFile("InputNorm"), CreateFile("InputLabels"));
+			Data X = new Data(CreateFile("Input_pos_all"), CreateFile("InputNorm"), CreateFile("InputLabels"));
             //Data Y = new Data(CreateFile("Output"), CreateFile("OutputNorm"), CreateFile("OutputLabels"));
 
             StreamWriter S = CreateFile("Sequences");
@@ -973,7 +1236,7 @@ public class MotionExporter : EditorWindow {
                                 //Exporting
                                 float start = Editor.CeilToTargetTime(Editor.GetData().GetFrame(seq.Start).Timestamp);
                                 float end = Editor.FloorToTargetTime(Editor.GetData().GetFrame(seq.End).Timestamp);
-                                int sample = 0;
+                                int sample = 0; 
                                 while (start + (sample + 1) / Framerate <= end)
                                 {
                                     //Debug.Log(" see frame " + start + (sample + 1) / Framerate);
@@ -982,7 +1245,12 @@ public class MotionExporter : EditorWindow {
                                         break;
                                     }
                                     Editor.SetRandomSeed(sample + 1);
-                                    InputEnvInteraction current = new InputEnvInteraction(Editor, start + sample / Framerate);
+
+									// current & next hip 으로 
+									InputEnvInteraction current = new InputEnvInteraction(Editor, start + sample / Framerate);
+									InputEnvInteraction next = new InputEnvInteraction(Editor, start + (sample+1) / Framerate);
+
+									emptyGameObject.transform.SetPositionAndRotation(current.Root_Interaction_mat.GetPosition(), current.Root_Interaction_mat.GetRotation()); 
                                     sample += 1;
 
                                     //Write Sequence
@@ -1108,28 +1376,101 @@ public class MotionExporter : EditorWindow {
         public CylinderMap Environment;
         public CuboidMap Interaction;
         public Matrix4x4 Root_Interaction_mat;
-        
-        public InputEnvInteraction(MotionEditor editor, float timestamp)
+
+		public Vector3 seat_center = new Vector3(100, 100, 100);
+		public Vector3 seat_normal = new Vector3(100, 100, 100);
+
+		public Vector3 backrest_center = new Vector3(100, 100, 100);
+		public Vector3 backrest_normal = new Vector3(100, 100, 100);
+
+		public Vector3 armrest_L_center = new Vector3(100, 100, 100);
+		public Vector3 armrest_L_normal = new Vector3(100, 100, 100);
+		public Vector3 armrest_R_center = new Vector3(100, 100, 100);
+		public Vector3 armrest_R_normal = new Vector3(100, 100, 100);
+
+		public Vector3 handrest_L_center = new Vector3(100, 100, 100);
+		public Vector3 handrest_L_normal = new Vector3(100, 100, 100);
+		public Vector3 handrest_R_center = new Vector3(100, 100, 100);
+		public Vector3 handrest_R_normal = new Vector3(100, 100, 100);
+
+		public Vector3 footrest_L_center = new Vector3(100, 100, 100);
+		public Vector3 footrest_L_normal = new Vector3(100, 100, 100);
+		public Vector3 footrest_R_center = new Vector3(100, 100, 100);
+		public Vector3 footrest_R_normal = new Vector3(100, 100, 100);
+
+
+		
+		public InputEnvInteraction(MotionEditor editor, float timestamp)
         {
             editor.LoadFrame(timestamp); // 현재 프레임의 값들을 가져온다.
             Frame = editor.GetCurrentFrame();
             Root = editor.GetActor().GetRoot().GetWorldMatrix(true);
             Posture = editor.GetActor().GetBoneTransformations();
             Velocities = editor.GetActor().GetBoneVelocities();
-            
-            GameObject[] interaction_root = editor.GetData().GetScene().GetRootGameObjects();
-            Root_Interaction_mat = Matrix4x4.identity;
-            if (interaction_root.Length > 0)
-            {
-                Root_Interaction_mat = interaction_root[0].transform.GetWorldMatrix();
-                Root_Interaction_mat = editor.Mirror ? Root_Interaction_mat.GetMirror(editor.GetData().MirrorAxis) : Root_Interaction_mat;
-               
-            }
-            else
-                Debug.Log("please set the root interaction matrix root have to be first");
-            //Environment = ((CylinderMapModule)editor.GetData().GetModule(Module.ID.CylinderMap)).GetCylinderMap(Frame, editor.Mirror);
-            //Interaction = ((GoalModule)editor.GetData().GetModule(Module.ID.Goal)).Target.GetInteractionGeometry(Frame, editor.Mirror, 1f / editor.TargetFramerate);
-        }
+
+			Root_Interaction_mat = Matrix4x4.identity;
+
+			GameObject[] interaction_root = editor.GetData().GetScene().GetRootGameObjects();
+			for (int i = 0; i < interaction_root.Length; i++)
+			{
+				if (interaction_root[0].name == "chairroot")
+				{
+					Root_Interaction_mat = interaction_root[0].transform.GetWorldMatrix();
+				}
+				else
+					Debug.Log("please set the root interaction matrix root have to be first");
+				Transform[] allchildern = interaction_root[0].GetComponentsInChildren<Transform>();
+				foreach(Transform child in allchildern)
+                {
+					if(child.localPosition.z < 90)
+                    {
+						if (child.name == "seat")
+						{
+							seat_center = child.localPosition;
+						}
+						if (child.name == "backrest")
+						{
+							backrest_center = child.localPosition;
+						}
+						if (child.name == "armrest_L")
+						{
+							armrest_L_center = child.localPosition;
+						}
+						if (child.name == "armrest_R")
+						{
+							armrest_R_center = child.localPosition;
+						}
+						if (child.name == "handrest_L")
+						{
+							handrest_L_center = child.localPosition;
+						}
+						if (child.name == "handrest_R")
+						{
+							handrest_R_center = child.localPosition;
+						}
+						if (child.name == "footrest_L")
+						{
+							footrest_L_center = child.localPosition;
+						}
+						if (child.name == "footrest_R")
+						{
+							footrest_R_center = child.localPosition;
+						}
+					}
+                }
+				
+			}
+			//if (interaction_root.Length > 0)
+			//{
+			//    Root_Interaction_mat = interaction_root[0].transform.GetWorldMatrix();
+			//    Root_Interaction_mat = editor.Mirror ? Root_Interaction_mat.GetMirror(editor.GetData().MirrorAxis) : Root_Interaction_mat;
+
+			//}
+			//else
+			//    Debug.Log("please set the root interaction matrix root have to be first");
+			//Environment = ((CylinderMapModule)editor.GetData().GetModule(Module.ID.CylinderMap)).GetCylinderMap(Frame, editor.Mirror);
+			//Interaction = ((GoalModule)editor.GetData().GetModule(Module.ID.Goal)).Target.GetInteractionGeometry(Frame, editor.Mirror, 1f / editor.TargetFramerate);
+		}
     }
 	public class InputSIGGRAPHAsia {
 		public Frame Frame;

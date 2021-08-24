@@ -9,7 +9,7 @@ namespace DeepLearning {
         
     public class SocketNetwork : NeuralNetwork {
         public string IP = "127.0.0.1";
-        public int  Port = 25001;
+        public int  Port = 12345;
         public string ModelPath = "";
         public string[] TensorNames = null;
 

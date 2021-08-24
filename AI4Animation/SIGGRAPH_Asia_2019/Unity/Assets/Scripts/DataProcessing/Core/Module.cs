@@ -4,7 +4,7 @@ using UnityEditor;
 
 public abstract class Module : ScriptableObject {
 
-	public enum ID {TimeSeries, Root, Style, Goal, Phase, Contact, HeightMap, DepthMap, CylinderMap, CuboidMap, SphereMap, DistanceMap, Motion, Length};
+	public enum ID {TimeSeries, Root, Style, Goal, Phase, Contact, HeightMap, DepthMap, CylinderMap, CuboidMap, SphereMap, DistanceMap, Motion, Behavior, Length};
 
 	public MotionData Data;
 	[System.NonSerialized] public bool Inspect = false;

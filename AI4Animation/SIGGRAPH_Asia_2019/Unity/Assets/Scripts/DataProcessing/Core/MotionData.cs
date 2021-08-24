@@ -22,7 +22,28 @@ public class MotionData : ScriptableObject {
 
 	public bool Export = true;
 	public bool Symmetric = true;
-    
+	public Matrix4x4 chairroot;
+	public Vector3 seat_center = new Vector3(100,100,100);
+	public Vector3 seat_normal = new Vector3(100, 100, 100);
+	
+	public Vector3 backrest_center = new Vector3(100, 100, 100);
+	public Vector3 backrest_normal = new Vector3(100, 100, 100);
+	
+	public Vector3 armrest_L_center = new Vector3(100, 100, 100);
+	public Vector3 armrest_L_normal = new Vector3(100, 100, 100);
+	public Vector3 armrest_R_center = new Vector3(100, 100, 100);
+	public Vector3 armrest_R_normal = new Vector3(100, 100, 100);
+
+	public Vector3 handrest_L_center = new Vector3(100, 100, 100);
+	public Vector3 handrest_L_normal = new Vector3(100, 100, 100);
+	public Vector3 handrest_R_center = new Vector3(100, 100, 100);
+	public Vector3 handrest_R_normal = new Vector3(100, 100, 100);
+
+	public Vector3 footrest_L_center = new Vector3(100, 100, 100);
+	public Vector3 footrest_L_normal = new Vector3(100, 100, 100);
+	public Vector3 footrest_R_center = new Vector3(100, 100, 100);
+	public Vector3 footrest_R_normal = new Vector3(100, 100, 100);
+
 	public void InspectAll(bool value) {
 		foreach(Module module in Modules) {
 			module.Inspect = value;
@@ -296,11 +317,8 @@ public class MotionData : ScriptableObject {
 		actor.ExtractSkeleton(instances.ToArray());
 		return actor;
 	}
-    public void CreateRootInteraction(Matrix4x4 hip){
-        Transform instance = new GameObject("root_interaction").transform;
-        //instance.transform.position = hip;
-        instance.transform.SetPositionAndRotation(hip.GetPosition(),hip.GetRotation());
-    }
+   
+
 	public Module AddModule(Module.ID type) {
 		Module module = System.Array.Find(Modules, x => x.GetID() == type);
 		if(module != null) {

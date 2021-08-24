@@ -19,17 +19,21 @@ namespace DeepLearning {
         public bool Inspect {get; set;} = false;
 
         private int Pivot = -1;
-
+        public string messageQe;
         protected abstract bool SetupDerived();
         protected abstract bool ShutdownDerived();
         protected abstract void PredictDerived();
 
-        void OnEnable() {
+        public void StartConnection() {
             Setup = SetupDerived();
         }
 
         void OnDisable() {
             Setup = ShutdownDerived();
+        }
+        private void OnDestroy()
+        {
+            ShutdownDerived();
         }
 
         public void Predict() {
